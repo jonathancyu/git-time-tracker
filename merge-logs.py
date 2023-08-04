@@ -2,15 +2,20 @@ import re
 import subprocess
 import os
 
-from datetime import datetime
+from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
 from functional import seq
+from tzlocal import get_localzone
 
-AUTHOR_TEXT = "Author:"
-DATE_TEXT = "Date:"
-COMMIT_FORMAT = '''{date} {message}
-    {author}
-'''
+INDENT = "  "
+COMMIT_FORMAT = INDENT + "{time} - {author}\n" + INDENT*2 + "{message}"
 is_empty = lambda x: (not x) or x.isspace()
+
+def get_line(lines: list[str], prefix: str):
+    for line in lines:
+        if line.startswith(prefix):
+            return line[len(prefix)+1:].strip()
+    raise IndexError
 
 class Commit:
     hash: str
@@ -18,37 +23,57 @@ class Commit:
     email: str
     date: datetime.date
     message: str
+    repo_path: str
 
     def __init__(self, commit_text: str):
         lines = (seq(commit_text.split("\n"))
             .map(str.strip)
-            .filter_not(is_empty)
         )
+        print(commit_text)
         
-        self.hash = lines[0].split(" ")[1]
-        self.author, self.email = Commit.extract_author_and_email(lines[1])
-        date_str = lines[2][len(DATE_TEXT)+1:].strip()
-        self.date = datetime.strptime(date_str, "%a %b %d %H:%M:%S %Y %z")
-        self.message = "<newline>".join(lines[3:])
+        self.hash = get_line(lines, "commit").split(" ")[0]
+        self.author, self.email = Commit.extract_author_and_email(get_line(lines, "Author:"))
+        self.date = datetime.strptime(get_line(lines, "Date:"), "%a %b %d %H:%M:%S %Y %z").astimezone(timezone.utc)
+        self.message = f"\n{INDENT*2}".join(Commit.get_message(commit_text))
+    
+    def set_repo_path(self, repo_path: str):
+        self.repo_path = repo_path
+    
+    # Helper
+    def extract_author_and_email(line: str):
+        email_pos, email_end = line.index("<"), line.index(">")
+        return line[:email_pos].strip(), \
+               line[email_pos+1:email_end]
+    
+    def get_message(commit_text: str):
+        message = commit_text[commit_text.index("    "):]
 
+        return (seq(message.strip().split("\n"))
+                .map(str.strip)
+                .filter_not(is_empty)
+        )
+
+    # Formatting
     def pretty_date(self):
-        return self.date.strftime("%a %b %d at %H:M")
-
+        return self.date.astimezone(get_localzone()) \
+            .strftime("%a %b %d")
+    
+    def pretty_time(self):
+        return self.date.astimezone(get_localzone()) \
+            .strftime("%H:%M")
+    
+    def pretty_repo(self):
+        return self.repo.split("/")[-1]
 
     def format(self):
         return COMMIT_FORMAT.format(
             date = self.pretty_date(),
+            time = self.pretty_time(),
             message = self.message,
-            author = self.author
-            )
+            author = self.author,
+            repo = self.pretty_repo
+            ) + "\n"
     
-
-    def extract_author_and_email(line: str):
-        print(line)
-        email_pos, email_end = line.index("<"), line.index(">")
-        return line[len(AUTHOR_TEXT):email_pos].strip(), \
-               line[email_pos+1:email_end]
-
 
 def get_commits(repo_path: str):
     os.chdir(repo_path)
@@ -56,12 +81,14 @@ def get_commits(repo_path: str):
     log = subprocess.check_output(
         ["git", "log"], universal_newlines=True
     )
-    commits = re.split(r"(?=\bcommit [a-f0-9]+\b)", log)
-    return ( seq(commits) 
+    commits_text = re.split(r"(?=\bcommit [a-f0-9]+\b)", log)
+    commits = ( seq(commits_text) 
         .map(str.strip) 
         .filter_not(is_empty)
         .map(Commit)
     )
+    commits.for_each(lambda c: c.set_repo_path(repo_path))
+    return commits
 
 def get_commits_from_repos(repo_paths: list[str]):
     all_commits = []
@@ -71,16 +98,30 @@ def get_commits_from_repos(repo_paths: list[str]):
         
     return all_commits
 
-def make_timeline(commits: list[Commit]):
+
+
+def make_timeline(commits: list[Commit],
+                  time_delta = timedelta(days=7)):
     timeline = sorted(commits, key = lambda x: x.date, reverse=True)
-    formatted_timeline = map(Commit.format, timeline)
-    return "\n |\n".join(formatted_timeline)
+
+    cutoff = (datetime.now(timezone.utc) - time_delta)
+    first_old_entry = next(i for i, c in enumerate(timeline) if c.date < cutoff)
+    if first_old_entry is not None:
+        timeline = timeline[:first_old_entry]
+    
+    dates: OrderedDict[str, str] = {}
+    for commit in timeline:
+        date = commit.pretty_date()
+        dates[date] = dates.get(date, f"{date}\n")
+        dates[date] += commit.format() + "\n"
+
+    return "\n".join(dates.values())
 
 
 repo_paths = [
     "/Users/aa710193/workspace/projects/cec-controller/",
     "/Users/aa710193/workspace/SARS/SARSPortalUI/",
-    # add as many repositories as you need
+    "/Users/aa710193/workspace/SARS/SARSService/",
 ]
 
 commits = get_commits_from_repos(repo_paths)
