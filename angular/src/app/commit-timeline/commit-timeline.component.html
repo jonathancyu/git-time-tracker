@@ -1,0 +1,19 @@
+<div class="grid grid-colds-1 space-y-4 bg-slate-200 p-5 rounded-md">
+    <div *ngFor="let day of timeline">
+        <div class="font-bold text-md">
+            {{day.prettyDate()}}
+        </div>
+        <div class="grid grid-cols-1 space-y-2 pl-2">
+            <div class="bg-gray-50 p-1 rounded-md"
+                *ngFor="let commit of day.commits">
+                <div class="text-red-400 font-mono text-xs">
+                    {{commit.prettyTime()}}
+                </div>
+                <div class="font-seriff pl-1">
+                    {{commit.message}}
+                    {{commit.repo}}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
