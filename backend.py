@@ -92,7 +92,6 @@ class Day(CamelModel):
             date = date,
             commits = commits
         )
-
     
 
 def get_commits(repo_path: str):
@@ -117,32 +116,35 @@ def get_commits_from_repos(repo_paths: list[str]):
         
     return all_commits
 
-def make_timeline(commits: list[Commit],
-                  time_delta = timedelta(days=7)):
+def prep_commits(commits: list[Commit], time_delta) -> list[Commit]:
     sorted_commits = sorted(commits, key = lambda x: x.get_datetime(), reverse=True)
 
     cutoff = (datetime.now() - time_delta)
     first_old_entry = next(i for i, c in enumerate(sorted_commits) if c.get_datetime() < cutoff)
     if first_old_entry is not None:
         sorted_commits = sorted_commits[:first_old_entry]
-    
-    timeline_dict: OrderedDict[str, list[Commit]] = OrderedDict()
+    return sorted_commits
+
+def make_timeline_dict(sorted_commits: list[Commit]) -> OrderedDict[str, list[Commit]]:
+    timeline_dict: OrderedDict[str, list[Commit]]= OrderedDict()
     for commit in sorted_commits:
         date = commit.get_day()
         timeline_dict[date] = timeline_dict.get(date, [])
         timeline_dict[date].append(commit)
+    return timeline_dict
 
+def make_timeline(commits: list[Commit],
+                  time_delta = timedelta(days=7)):
+    commits = prep_commits(commits, time_delta)
     timeline: list[Day] = []
-    for day, commits in timeline_dict.items():
+    for _, commits in make_timeline_dict(commits).items():
         date = commits[0].date
         timeline.append(Day(date, commits))
-    print(timeline)
     return timeline
-    
 
 repo_paths = ["/Users/aa710193/workspace/projects/cec-controller/",
 "/Users/aa710193/workspace/SARS/SARSPortalUI/",
-"/Users/aa710193/workspace/SARS/SARSService/",]
+"/Users/aa710193/workspace/SARS/SARSService/"]
 app = FastAPI()
 
 origins = ["*"]
