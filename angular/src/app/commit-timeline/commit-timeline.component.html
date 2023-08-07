@@ -5,8 +5,8 @@
         </div>
         <div class="grid grid-cols-1 space-y-2 pl-2">
             <button *ngFor="let commit of day.commits"
-                class="pt-1 pl-2 pr-2 pb-2 rounded-md 
-                border-black hover:border"
+                class="pt-1 pl-2 pr-2 pb-2 rounded-md border
+                border-transparent hover:border-black"
                 [ngClass]="commit.currentClass"
                 (click)="toggleCommit(commit)">
                 <div class="flex justify-between">
